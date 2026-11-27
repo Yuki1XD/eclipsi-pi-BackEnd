@@ -14,9 +14,7 @@ load_dotenv(ENV_FILE)
 
 
 def cors_origins() -> list[str]:
-    """Retorna as origens permitidas pela API, sem itens vazios."""
-    configured = os.getenv("CORS_ORIGINS", "*")
-    return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return ["https://eclipsi.dev", "https://www.eclipsi.dev", "http://localhost:8081"]
 
 
 def database_config() -> dict[str, str | None]:

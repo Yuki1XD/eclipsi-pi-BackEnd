@@ -18,7 +18,7 @@ def client(monkeypatch):
 
         def fetchone(self):
             if 'from public.users' in self.query:
-                return (1, 'Teste', 'test@example.com', None, 'paciente', None)
+                return (1, 'Teste', 'test@example.com', None, 'paciente', None, None)
             return None
 
     class FakeConnection:

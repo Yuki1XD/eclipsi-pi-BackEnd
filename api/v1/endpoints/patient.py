@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from flask import Blueprint, g, jsonify, request
-from psycopg2 import sql
+from psycopg2 import errors, sql
+from uuid import UUID
 
 from api.core.database import get_db
 from api.core.security import require_auth
@@ -165,26 +166,49 @@ def doctors():
 @bp.post("/appointments")
 @require_auth
 def create_appointment():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(success=False, message="Informe os dados da consulta."), 400
+    slot_id = data.get("slot_id")
+    strict = slot_id is not None or request.path == "/api/v1/patient/appointments"
     try:
-        doctor_id = int(data["medico_id"])
-        when = datetime.fromisoformat(str(data["data_hora"]).replace("Z", "+00:00"))
-    except (KeyError, ValueError, TypeError):
-        return jsonify({"success": False, "message": "Médico ou data inválidos."}), 400
-    if when.tzinfo is None:
-        return jsonify({"success": False, "message": "A data deve conter fuso horário."}), 400
-    if when <= datetime.now(timezone.utc):
-        return jsonify({"success": False, "message": "Escolha uma data futura."}), 400
+        if slot_id is not None:
+            slot_id = str(UUID(str(slot_id)))
+            doctor_id = int(data["medico_id"]) if "medico_id" in data else None
+            when = None
+        else:
+            doctor_id = int(data["medico_id"])
+            when = datetime.fromisoformat(str(data["data_hora"]).replace("Z", "+00:00"))
+            if when.utcoffset() is None:
+                raise ValueError("Data sem fuso horário")
+            if when <= datetime.now(timezone.utc):
+                status = 409 if strict else 400
+                return jsonify(success=False, message="Escolha uma data futura."), status
+    except (KeyError, ValueError, TypeError, OverflowError):
+        return jsonify(success=False, message="Médico, horário ou slot inválido."), 400
 
     conn = get_db()
     try:
         cur = conn.cursor()
         profile = _profile_role(cur, g.auth_user_id)
-        if not profile or profile[3] != "paciente":
+        if not profile or profile[3] != "paciente" or (strict and g.auth_user.get("role") != "paciente"):
             return jsonify({
                 "success": False,
                 "message": "Somente pacientes podem agendar consultas.",
             }), 403
+        if strict:
+            cur.execute(
+                """select professional_id, data_hora from public.disponibilidades
+                   where ativo and data_hora > now()
+                     and ((%s::uuid is not null and id = %s::uuid)
+                          or (%s::uuid is null and professional_id = %s and data_hora = %s))
+                   for update""",
+                (slot_id, slot_id, slot_id, doctor_id, when),
+            )
+            slot = cur.fetchone()
+            if not slot or (doctor_id is not None and doctor_id != slot[0]):
+                return jsonify(success=False, message="Horário indisponível."), 409
+            doctor_id, when = slot
         cur.execute(
             "select id, valor_hora from public.users "
             "where id = %s and role in ('medico', 'profissional')",
@@ -211,12 +235,9 @@ def create_appointment():
                 "status": row[3],
             },
         }), 201
-    except Exception as exc:
+    except errors.UniqueViolation:
         conn.rollback()
-        message = str(exc).lower()
-        if "ux_appointments_doctor_time" in message or "duplicate key" in message:
-            return jsonify({"success": False, "message": "Este horário já está ocupado."}), 409
-        return jsonify({"success": False, "message": "Não foi possível criar a consulta."}), 500
+        return jsonify(success=False, message="Este horário já está ocupado."), 409
     finally:
         conn.close()
 

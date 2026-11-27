@@ -12,6 +12,8 @@ from .endpoints.patient import bp as patient_bp
 from .endpoints.payments import bp as payments_bp
 from .endpoints.quiz import bp as quiz_bp
 from .endpoints.reviews import bp as reviews_bp
+from .endpoints.scheduling import bp as scheduling_bp
+from .endpoints.pix import bp as pix_bp
 
 
 API_BLUEPRINTS = (
@@ -23,6 +25,8 @@ API_BLUEPRINTS = (
     chat_bp,
     quiz_bp,
     reviews_bp,
+    scheduling_bp,
+    pix_bp,
 )
 
 

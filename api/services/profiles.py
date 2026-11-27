@@ -22,3 +22,8 @@ def doctor_profile(cursor: Any, user_id: str) -> Any | None:
         (int(user_id),),
     )
     return cursor.fetchone()
+
+
+def has_role(cursor: Any, claims: dict, *roles: str) -> bool:
+    """Require both the signed role and the current database role."""
+    return claims.get("role") in roles and role_for_user(cursor, claims["sub"]) in roles

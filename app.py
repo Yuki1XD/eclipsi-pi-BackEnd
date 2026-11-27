@@ -17,6 +17,16 @@ def create_app() -> Flask:
     CORS(app, resources={r"/api/*": {"origins": cors_origins()}})
     register_api_routes(app)
 
+    @app.after_request
+    def security_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        return response
+
+    @app.errorhandler(500)
+    def internal_error(_error):
+        return jsonify(success=False, message="Erro interno."), 500
+
     @app.get("/health")
     def health():
         return jsonify({"success": True, "service": "eclipsi-api"}), 200
@@ -140,6 +150,16 @@ def create_app() -> Flask:
             ("GET", "/api/v1/doctor/dashboard"),
             ("GET", "/api/v1/doctor/appointments"),
             ("GET", "/api/v1/doctor/earnings"),
+            ("GET", "/api/v1/professionals/{professional_id}/availability"),
+            ("POST", "/api/v1/professional/availability"),
+            ("DELETE", "/api/v1/professional/availability/{slot_id}"),
+            ("POST", "/api/v1/patient/appointments"),
+            ("POST", "/api/v1/patient/triage"),
+            ("GET", "/api/v1/patient/doctors"),
+            ("GET", "/api/v1/patient/doctors/recommended"),
+            ("POST", "/api/v1/payments/pix/create"),
+            ("POST", "/api/v1/payments/pix/{payment_id}/confirm"),
+            ("POST", "/api/v1/payments/webhook/mercadopago"),
             ("POST", "/api/v1/payments"),
             ("GET", "/api/v1/payments"),
             ("PATCH", "/api/v1/payments/{payment_id}"),
@@ -156,6 +176,7 @@ def create_app() -> Flask:
         for route in routes:
             method = route[0].lower()
             add(route[1], method, "Endpoint registrado no Flask")
+        paths["/api/v1/payments/webhook/mercadopago"]["post"]["security"] = []
         return jsonify({
             "openapi": "3.0.3",
             "info": {"title": "EcliPsi API", "version": "1.0.0"},

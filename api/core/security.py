@@ -23,8 +23,9 @@ def _decode_token(token: str) -> dict[str, Any]:
     if not secret:
         raise RuntimeError("JWT_SECRET ou SUPABASE_JWT_SECRET não configurado no backend.")
     if os.getenv("JWT_SECRET"):
-        return jwt.decode(token, secret, algorithms=["HS256"])
-    return jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
+        return jwt.decode(token, secret, algorithms=["HS256"], options={"require": ["exp", "sub"]})
+    return jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated",
+                      options={"require": ["exp", "sub"]})
 
 
 def require_auth(view: Callable[..., Any]) -> Callable[..., Any]:
@@ -39,8 +40,12 @@ def require_auth(view: Callable[..., Any]) -> Callable[..., Any]:
             claims = _decode_token(token)
         except jwt.ExpiredSignatureError:
             return jsonify({"success": False, "message": "Token expirado."}), 401
-        except (jwt.InvalidTokenError, RuntimeError) as exc:
-            return jsonify({"success": False, "message": str(exc) or "Token inválido."}), 401
+        except (jwt.InvalidTokenError, RuntimeError):
+            return jsonify({"success": False, "message": "Token inválido."}), 401
+
+        subject = claims.get("sub")
+        if not isinstance(subject, str) or not subject.isascii() or not subject.isdecimal() or len(subject) > 18:
+            return jsonify({"success": False, "message": "Token inválido."}), 401
 
         g.auth_user = claims
         g.auth_user_id = claims.get("sub")
